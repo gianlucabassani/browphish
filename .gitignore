@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+lib/
+include/
+bin/
+share/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.cache
+.pytest_cache/
+htmlcov/
+dist/
+build/
+*.egg-info/
+.nox/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+/data/  # Directory per database o dati persistenti (es. credenziali catturate)
+# Environment variables
+.env
+.flaskenv
+
+# Logs and temporary files
+*.log
+logs/
+tmp/
+temp/
+
+# Generated reports/outputs (specific to Browphish)
+reports/
+data/
+output/
+captured_credentials/
+captured_pages/
+phishing_pages_cache/ # Cache di pagine clonate
+payloads/             # Se ci sono payload generati dinamicamente o sensibili

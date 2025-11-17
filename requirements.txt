@@ -1,0 +1,11 @@
+colorama
+tabulate
+validators
+python-dotenv
+requests
+beautifulsoup4
+Flask
+
+# Ad esempio per il PDF: ReportLab (se si vuole generare PDF da zero) o pdfkit (se si genera da HTML)
+# Per autenticazione/hashing: passlib (se il toolkit avrà un sistema di login)
+# Per tracciamento click: Flask-WTF (per CSRF token nelle form)
