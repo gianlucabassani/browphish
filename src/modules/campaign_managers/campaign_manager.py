@@ -62,7 +62,7 @@ def terminate_campaign(campaign_id, db_manager):
 def delete_campaign(campaign_id, db_manager):
     """Elimina una campagna e i dati associati (conferma a monte)."""
     with db_manager.transaction() as cursor:
-        cursor.execute("DELETE FROM captured_credentials WHERE campaign_entity_id = ?", (campaign_id,))
+        cursor.execute("DELETE FROM captured_credentials WHERE campaign_entity_id = ?", (campaign_id,)) # Eliminare anche le credenziali catturate??
         cursor.execute("DELETE FROM phishing_pages WHERE campaign_entity_id = ?", (campaign_id,))
         cursor.execute("DELETE FROM phishing_campaigns WHERE id = ?", (campaign_id,))
         return cursor.rowcount > 0

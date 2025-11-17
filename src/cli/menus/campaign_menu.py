@@ -17,13 +17,15 @@ def display_campaign_menu() -> str:
     print(f"{'═' * 40}{Style.RESET_ALL}")
     print(f"{Fore.LIGHTRED_EX}1.{Style.RESET_ALL} Crea nuova campagna")
     print(f"{Fore.LIGHTRED_EX}2.{Style.RESET_ALL} Modifica campagna")
-    print(f"{Fore.LIGHTRED_EX}3.{Style.RESET_ALL} Avvia campagna (background)")
-    print(f"{Fore.LIGHTRED_EX}4.{Style.RESET_ALL} Arresta campagna")
-    print(f"{Fore.LIGHTRED_EX}5.{Style.RESET_ALL} Associa pagina a campagna")
+    print(f"{Fore.LIGHTRED_EX}3.{Style.RESET_ALL} Elimina campagna")
     print()
-    print(f"{Fore.LIGHTRED_EX}6.{Style.RESET_ALL} Visualizza tutte le campagne")
-    print(f"{Fore.LIGHTRED_EX}7.{Style.RESET_ALL} Dettagli campagna")
-    print(f"{Fore.LIGHTRED_EX}8.{Style.RESET_ALL} Campagne in esecuzione")
+    print(f"{Fore.LIGHTRED_EX}4.{Style.RESET_ALL} Avvia campagna (background)")
+    print(f"{Fore.LIGHTRED_EX}5.{Style.RESET_ALL} Arresta campagna")
+    print(f"{Fore.LIGHTRED_EX}6.{Style.RESET_ALL} Associa pagina a campagna")
+    print()
+    print(f"{Fore.LIGHTRED_EX}7.{Style.RESET_ALL} Visualizza tutte le campagne")
+    print(f"{Fore.LIGHTRED_EX}8.{Style.RESET_ALL} Dettagli campagna")
+    print(f"{Fore.LIGHTRED_EX}9.{Style.RESET_ALL} Campagne in esecuzione")
     print(f"\n{Fore.LIGHTRED_EX}0.{Style.RESET_ALL} Torna al menu principale")
     return prompt_for_input(f"\n{Fore.LIGHTRED_EX}Scelta: {Style.RESET_ALL}")
 
@@ -35,22 +37,78 @@ def handle_campaign_choice(choice: str, db_manager: DatabaseManager) -> bool:
         case "2":
             modifica_campagna(db_manager)
         case "3":
-            avvia_campagna(db_manager)
+            elimina_campagna(db_manager)
         case "4":
-            arresta_campagna(db_manager)
+            avvia_campagna(db_manager)
         case "5":
-            associa_pagina_campagna(db_manager)
+            arresta_campagna(db_manager)
         case "6":
-            visualizza_tutte_campagne(db_manager)
+            associa_pagina_campagna(db_manager)
         case "7":
-            dettagli_campagna(db_manager)
+            visualizza_tutte_campagne(db_manager)
         case "8":
+            dettagli_campagna(db_manager)
+        case "9":
             mostra_campagne_in_esecuzione()
         case "0":
             return False
         case _:
             print(f"{Fore.RED}Scelta non valida. Riprova.{Style.RESET_ALL}")
     return True
+
+
+def elimina_campagna(db_manager: DatabaseManager) -> None:
+    """Elimina una campagna dal database."""
+    campaigns = campaign_manager.get_campaigns(db_manager)
+    print(f"\n{Fore.LIGHTRED_EX}{'═' * 50}")
+    print(f"█ {Fore.WHITE}{'ELENCO CAMPAGNE':^46}{Fore.LIGHTRED_EX} █")
+    print(f"{'═' * 50}{Style.RESET_ALL}")
+    if not campaigns:
+        print(f"{Fore.YELLOW}Nessuna campagna trovata.{Style.RESET_ALL}")
+        return
+    try:
+        from tabulate import tabulate
+        headers = [
+            "ID", "Nome", "Descrizione", "Entità", "Tipo", "Status", "Creata il"
+        ]
+        table = []
+        for campaign in campaigns:
+            status_color = Fore.GREEN if campaign['status'] == 'active' else Fore.RED
+            status = f"{status_color}{campaign['status']}{Style.RESET_ALL}"
+            description = (campaign['description'][:30] + "...") if campaign['description'] and len(campaign['description']) > 30 else (campaign['description'] or "-")
+            table.append([
+                campaign['id'],
+                campaign['name'],
+                description,
+                campaign['entity_name'],
+                campaign['entity_type'],
+                status,
+                campaign['created_at']
+            ])
+        print(tabulate(table, headers=headers, tablefmt="grid"))
+        print(f"\n{Fore.WHITE}Totale campagne: {len(campaigns)}{Style.RESET_ALL}")
+    except ImportError:
+        print("Lista campagne:")
+        for campaign in campaigns:
+            print(f"[{campaign['id']}] {campaign['name']} - {campaign['status']} - {campaign['created_at']}")
+
+    id_canc = prompt_for_input(f"\n{Fore.LIGHTRED_EX}ID campagna da eliminare: {Style.RESET_ALL}")
+    try:
+        id_canc_int = int(id_canc)
+        conferma = prompt_for_input(f"{Fore.YELLOW}Sei sicuro di voler eliminare la campagna ID {id_canc_int}? (s/N): {Style.RESET_ALL}")
+        if conferma.lower() == 's':
+            successo = campaign_manager.delete_campaign(id_canc_int, db_manager)
+            if successo:
+                print(f"{Fore.GREEN}✓ Campagna ID {id_canc_int} eliminata con successo.{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.RED}✗ Errore nell'eliminazione della campagna ID {id_canc_int}.{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.WHITE}Eliminazione campagna annullata.{Style.RESET_ALL}")
+    except ValueError:
+        print(f"{Fore.RED}✗ ID campagna non valido.{Style.RESET_ALL}")
+    
+
+
 
 def visualizza_tutte_campagne(db_manager: DatabaseManager) -> None:
     """Visualizza tutte le campagne in formato tabellare."""
@@ -260,8 +318,8 @@ def elimina_campagna(db_manager: DatabaseManager) -> None:
         print(f"  - Tutte le pagine phishing associate")
         print(f"  - Tutte le credenziali catturate")
         print(f"  - Tutti i dati correlati")
-        conferma = prompt_for_input(f"\n{Fore.RED}Digita 'ELIMINA' per confermare l'eliminazione della campagna '{campaign['name']}': {Style.RESET_ALL}")
-        if conferma != 'ELIMINA':
+        conferma = prompt_for_input(f"\n{Fore.RED}Confermare cancellazione della campagna '{campaign['name']}'? (s/N): {Style.RESET_ALL}")
+        if conferma.lower() != 's':
             print(f"{Fore.WHITE}Operazione annullata.{Style.RESET_ALL}")
             return
         ok = campaign_manager.delete_campaign(campaign_id, db_manager)
@@ -461,7 +519,13 @@ def arresta_campagna(db_manager: DatabaseManager) -> None:
             return
         
         if stop_campaign_background(campaign_id):
-            print(f"\n{Fore.GREEN}✓ Campagna '{campaign['name']}' arrestata.{Style.RESET_ALL}")
+            # Aggiorna lo status nel database
+            ok = campaign_manager.terminate_campaign(campaign_id, db_manager)
+            if ok:
+                print(f"\n{Fore.GREEN}✓ Campagna '{campaign['name']}' arrestata e terminata.{Style.RESET_ALL}")
+            else:
+                print(f"\n{Fore.GREEN}✓ Campagna '{campaign['name']}' arrestata.{Style.RESET_ALL}")
+                print(f"{Fore.YELLOW}⚠ Attenzione: lo status nel database potrebbe non essere aggiornato.{Style.RESET_ALL}")
         else:
             print(f"{Fore.RED}✗ La campagna non è in esecuzione.{Style.RESET_ALL}")
     
@@ -569,8 +633,8 @@ def elimina_campagna(db_manager: DatabaseManager) -> None:
         print(f"  - Tutte le pagine phishing associate")
         print(f"  - Tutte le credenziali catturate")
         print(f"  - Tutti i dati correlati")
-        conferma = prompt_for_input(f"\n{Fore.RED}Digita 'ELIMINA' per confermare l'eliminazione della campagna '{campaign['name']}': {Style.RESET_ALL}")
-        if conferma != 'ELIMINA':
+        conferma = prompt_for_input(f"\n{Fore.RED}Sei sicuro di voler eliminare la campagna '{campaign['name']}'? (s/N): {Style.RESET_ALL}")
+        if conferma.lower() != 's':
             print(f"{Fore.WHITE}Operazione annullata.{Style.RESET_ALL}")
             return
         ok = campaign_manager.delete_campaign(campaign_id, db_manager)
