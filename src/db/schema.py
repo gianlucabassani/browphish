@@ -5,6 +5,8 @@ SCHEMAS = {
         type TEXT NOT NULL,
         name TEXT NOT NULL,
         domain TEXT,
+        ssl_cert_path TEXT,
+        ssl_key_path TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(type, name, domain)
     );
@@ -14,6 +16,8 @@ SCHEMAS = {
         entity_id INTEGER NOT NULL,
         name TEXT NOT NULL,
         description TEXT,
+        ssl_cert_path TEXT,
+        ssl_key_path TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         status TEXT DEFAULT 'active',
         FOREIGN KEY (entity_id) REFERENCES entities(id)
@@ -67,6 +71,8 @@ CREATE TABLE IF NOT EXISTS phishing_campaigns (
     entity_id INTEGER NOT NULL,
     name TEXT NOT NULL,
     description TEXT,
+    ssl_cert_path TEXT,
+    ssl_key_path TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     status TEXT DEFAULT 'active',
     FOREIGN KEY (entity_id) REFERENCES entities(id)

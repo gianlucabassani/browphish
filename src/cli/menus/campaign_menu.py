@@ -25,7 +25,8 @@ def display_campaign_menu() -> str:
     print()
     print(f"{Fore.LIGHTRED_EX}7.{Style.RESET_ALL} Visualizza tutte le campagne")
     print(f"{Fore.LIGHTRED_EX}8.{Style.RESET_ALL} Dettagli campagna")
-    print(f"{Fore.LIGHTRED_EX}9.{Style.RESET_ALL} Campagne in esecuzione")
+    print(f"{Fore.LIGHTRED_EX}9.{Style.RESET_ALL} Campagne in esecuzione")    
+    print(f"{Fore.LIGHTRED_EX}10.{Style.RESET_ALL} Configura SSL (cert/key) per campagna/entità")    
     print(f"\n{Fore.LIGHTRED_EX}0.{Style.RESET_ALL} Torna al menu principale")
     return prompt_for_input(f"\n{Fore.LIGHTRED_EX}Scelta: {Style.RESET_ALL}")
 
@@ -50,6 +51,8 @@ def handle_campaign_choice(choice: str, db_manager: DatabaseManager) -> bool:
             dettagli_campagna(db_manager)
         case "9":
             mostra_campagne_in_esecuzione()
+        case "10":
+            configura_ssl_paths(db_manager)
         case "0":
             return False
         case _:
@@ -434,6 +437,130 @@ def avvia_campagna(db_manager: DatabaseManager) -> None:
     print(f"\n{Fore.LIGHTRED_EX}{'═' * 40}")
     print(f"█ {Fore.WHITE}{'AVVIA CAMPAGNA':^36}{Fore.LIGHTRED_EX} █")
     print(f"{'═' * 40}{Style.RESET_ALL}")
+
+
+def configura_ssl_paths(db_manager: DatabaseManager) -> None:
+    """Interfaccia CLI per impostare/cancellare i percorsi SSL per campagne o entità (domini)."""
+    from modules.campaign_managers import campaign_manager
+
+    print(f"\n{Fore.LIGHTRED_EX}{'═' * 40}")
+    print(f"█ {Fore.WHITE}{'CONFIGURA SSL PER CAMPAGNA/ENTITÀ':^36}{Fore.LIGHTRED_EX} █")
+    print(f"{'═' * 40}{Style.RESET_ALL}")
+
+    print(f"{Fore.LIGHTRED_EX}1.{Style.RESET_ALL} Imposta/aggiorna percorsi per una campagna")
+    print(f"{Fore.LIGHTRED_EX}2.{Style.RESET_ALL} Imposta/aggiorna percorsi per un'entità (dominio)")
+    print(f"{Fore.LIGHTRED_EX}3.{Style.RESET_ALL} Visualizza percorsi SSL per una campagna")
+    print(f"{Fore.RED}0.{Style.RESET_ALL} Annulla")
+
+    choice = prompt_for_input(f"\n{Fore.LIGHTRED_EX}Scelta: {Style.RESET_ALL}")
+
+    try:
+        if choice == '1':
+            campaigns = campaign_manager.get_campaigns(db_manager)
+            if not campaigns:
+                print(f"{Fore.YELLOW}Nessuna campagna trovata.{Style.RESET_ALL}")
+                return
+            print(f"\n{Fore.WHITE}Campagne disponibili:{Style.RESET_ALL}")
+            for campaign in campaigns:
+                print(f"{Fore.LIGHTRED_EX}[{campaign['id']}]{Style.RESET_ALL} {campaign['name']}")
+            campaign_id = int(prompt_for_input(f"\n{Fore.LIGHTRED_EX}ID campagna: {Style.RESET_ALL}"))
+            camp = campaign_manager.get_campaign_by_id(campaign_id, db_manager)
+            if not camp:
+                print(f"{Fore.RED}✗ Campagna non trovata.{Style.RESET_ALL}")
+                return
+            print(f"\nPercorsi attuali: cert={camp.get('ssl_cert_path') or '-'} key={camp.get('ssl_key_path') or '-'}")
+            cert = prompt_for_input(f"Percorso certificato (PATH) o INVIO per mantenere, 'clear' per rimuovere: ")
+            key = prompt_for_input(f"Percorso chiave (PATH) o INVIO per mantenere, 'clear' per rimuovere: ")
+
+            new_cert = camp.get('ssl_cert_path') if cert.strip() == '' else (None if cert.strip().lower() == 'clear' else cert.strip())
+            new_key = camp.get('ssl_key_path') if key.strip() == '' else (None if key.strip().lower() == 'clear' else key.strip())
+
+            # Verifica esistenza file (se forniti) e richiedi conferma aggiuntiva se non trovati
+            from pathlib import Path
+            for p_label, p_val in [('cert', new_cert), ('key', new_key)]:
+                if p_val and not Path(p_val).exists():
+                    warn = prompt_for_input(f"{Fore.YELLOW}Attenzione: il file {p_label} '{p_val}' non esiste. Continuare? (s/N): {Style.RESET_ALL}")
+                    if warn.lower() != 's':
+                        print(f"{Fore.WHITE}Operazione annullata dall'utente.{Style.RESET_ALL}")
+                        return
+
+            confirmed = prompt_for_input(f"Confermi l'aggiornamento? (s/N): ")
+            if confirmed.lower() == 's':
+                ok = campaign_manager.update_campaign_ssl_paths(campaign_id, new_cert, new_key, db_manager)
+                if ok:
+                    print(f"{Fore.GREEN}✓ Percorsi aggiornati per la campagna ID {campaign_id}.{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.RED}✗ Nessuna modifica effettuata.{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.WHITE}Operazione annullata.{Style.RESET_ALL}")
+
+        elif choice == '2':
+            entities = db_manager.execute_query("SELECT id, name, type, domain, ssl_cert_path, ssl_key_path FROM entities ORDER BY name")
+            if not entities:
+                print(f"{Fore.YELLOW}Nessuna entità trovata.{Style.RESET_ALL}")
+                return
+            print(f"\n{Fore.WHITE}Entità disponibili:{Style.RESET_ALL}")
+            for e in entities:
+                print(f"{Fore.LIGHTRED_EX}[{e['id']}]{Style.RESET_ALL} {e['name']} ({e['type']}) cert={e.get('ssl_cert_path') or '-'} key={e.get('ssl_key_path') or '-'}")
+            entity_id = int(prompt_for_input(f"\n{Fore.LIGHTRED_EX}ID entità: {Style.RESET_ALL}"))
+            ent = db_manager.fetch_one("SELECT id, name, ssl_cert_path, ssl_key_path FROM entities WHERE id = ?", (entity_id,))
+            if not ent:
+                print(f"{Fore.RED}✗ Entità non trovata.{Style.RESET_ALL}")
+                return
+            print(f"\nPercorsi attuali: cert={ent.get('ssl_cert_path') or '-'} key={ent.get('ssl_key_path') or '-'}")
+            cert = prompt_for_input(f"Percorso certificato (PATH) o INVIO per mantenere, 'clear' per rimuovere: ")
+            key = prompt_for_input(f"Percorso chiave (PATH) o INVIO per mantenere, 'clear' per rimuovere: ")
+
+            new_cert = ent.get('ssl_cert_path') if cert.strip() == '' else (None if cert.strip().lower() == 'clear' else cert.strip())
+            new_key = ent.get('ssl_key_path') if key.strip() == '' else (None if key.strip().lower() == 'clear' else key.strip())
+
+            # Verifica esistenza file (se forniti) e richiedi conferma aggiuntiva se non trovati
+            from pathlib import Path
+            for p_label, p_val in [('cert', new_cert), ('key', new_key)]:
+                if p_val and not Path(p_val).exists():
+                    warn = prompt_for_input(f"{Fore.YELLOW}Attenzione: il file {p_label} '{p_val}' non esiste. Continuare? (s/N): {Style.RESET_ALL}")
+                    if warn.lower() != 's':
+                        print(f"{Fore.WHITE}Operazione annullata dall'utente.{Style.RESET_ALL}")
+                        return
+
+            confirmed = prompt_for_input(f"Confermi l'aggiornamento? (s/N): ")
+            if confirmed.lower() == 's':
+                ok = campaign_manager.update_entity_ssl_paths(entity_id, new_cert, new_key, db_manager)
+                if ok:
+                    print(f"{Fore.GREEN}✓ Percorsi aggiornati per l'entità ID {entity_id}.{Style.RESET_ALL}")
+                else:
+                    print(f"{Fore.RED}✗ Nessuna modifica effettuata.{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.WHITE}Operazione annullata.{Style.RESET_ALL}")
+
+        elif choice == '3':
+            campagne = campaign_manager.get_campaigns(db_manager)
+            if not campagne:
+                print(f"{Fore.YELLOW}Nessuna campagna trovata.{Style.RESET_ALL}")
+                return
+            print(f"\n{Fore.WHITE}Campagne disponibili:{Style.RESET_ALL}")
+            for c in campagne:
+                print(f"{Fore.LIGHTRED_EX}[{c['id']}]{Style.RESET_ALL} {c['name']}")
+            campaign_id = int(prompt_for_input(f"\n{Fore.LIGHTRED_EX}ID campagna: {Style.RESET_ALL}"))
+            # Recupera campagne con entity join per mostrare valori
+            camp = campaign_manager.get_campaign_by_id(campaign_id, db_manager)
+            if not camp:
+                print(f"{Fore.RED}✗ Campagna non trovata.{Style.RESET_ALL}")
+                return
+            print(f"\nCampagna: {camp['name']}\n  Cert: {camp.get('ssl_cert_path') or '-'}\n  Key: {camp.get('ssl_key_path') or '-'}\n  Dominio: {camp.get('domain') or '-'}")
+
+        elif choice == '0':
+            print(f"{Fore.WHITE}Operazione annullata.{Style.RESET_ALL}")
+            return
+
+        else:
+            print(f"{Fore.RED}Scelta non valida.{Style.RESET_ALL}")
+
+    except ValueError:
+        print(f"{Fore.RED}✗ ID non valido.{Style.RESET_ALL}")
+    except Exception as e:
+        print(f"{Fore.RED}✗ Errore: {e}{Style.RESET_ALL}")
+        logger.error(f"Errore configurazione SSL: {e}")
     
     campaigns = campaign_manager.get_campaigns(db_manager)
     if not campaigns:

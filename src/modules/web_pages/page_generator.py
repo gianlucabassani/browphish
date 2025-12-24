@@ -274,7 +274,7 @@ def clone_webpage(url: str, page_name: str, save_dir: Path) -> Path | None:
             hidden_input['value'] = page_name
             form.append(hidden_input)
 
-            # Applica la logica intelligente per l'identificazione dei campi
+            # Applica la logica per l'identificazione dei campi
             enhance_form_fields(form, soup)
 
         # 2. Riscrivi URL relativi in assoluti (immagini, CSS, JS)

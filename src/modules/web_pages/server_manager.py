@@ -55,22 +55,63 @@ def select_captured_page() -> None:
     except ValueError:
         print(f"{Fore.RED}Input non valido.{Style.RESET_ALL}")
 
-def start_server_with_page(page_name: str, page_type: str) -> None:
-    """Avvia il server con la pagina specificata, supportando HTTPS se i certificati sono presenti."""
+def start_server_with_page(page_name: str, page_type: str, cert_path: str | None = None, key_path: str | None = None) -> None:
+    """Avvia il server con la pagina specificata, supportando HTTPS se i certificati sono presenti.
+
+    I percorsi dei certificati possono essere forniti come argomenti (override), oppure verranno
+    ricavati dal database: prima si controlla la configurazione della campagna, poi del dominio.
+    Per la pagina di test si verificheranno anche le variabili d'ambiente BROWPHISH_SSL_CERT / BROWPHISH_SSL_KEY.
+    """
     try:
-        # Percorsi dei certificati Let's Encrypt
-        cert_path = "/etc/letsencrypt/live/example.com/fullchain.pem"
-        key_path = "/etc/letsencrypt/live/example.com/privkey.pem"
         ssl_context = None
 
-        # Verifica se i certificati esistono
-        if Path(cert_path).exists() and Path(key_path).exists():
-            ssl_context = (cert_path, key_path)
-            print(f"{Fore.LIGHTGREEN_EX}✓ Certificati Let's Encrypt trovati. Il server userà HTTPS.{Style.RESET_ALL}")
+        # Se i percorsi sono passati esplicitamente, usali
+        if cert_path and key_path:
+            if Path(cert_path).exists() and Path(key_path).exists():
+                ssl_context = (cert_path, key_path)
+                print(f"{Fore.LIGHTGREEN_EX}✓ Certificati forniti. Il server userà HTTPS.{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.YELLOW}Certificati forniti ma non trovati o non accessibili. Il server userà HTTP.{Style.RESET_ALL}")
         else:
-            print(f"{Fore.YELLOW}Certificati Let's Encrypt non trovati. Il server userà HTTP.{Style.RESET_ALL}")
+            # Prova a ricavare i percorsi dal database per le pagine clonate
+            from db.manager import DatabaseManager
+            db_manager = DatabaseManager.get_instance()
 
-        # Passa ssl_context a start_web_server (deve supportarlo)
+            if page_type == 'captured':
+                page_row = db_manager.fetch_one("SELECT campaign_entity_id, domain_entity_id FROM phishing_pages WHERE name = ?", (page_name,))
+                if page_row:
+                    # Priorità: certificati della campagna > certificati del dominio (entity)
+                    camp_id = page_row.get('campaign_entity_id')
+                    dom_id = page_row.get('domain_entity_id')
+
+                    if camp_id:
+                        camp = db_manager.fetch_one("SELECT ssl_cert_path, ssl_key_path FROM phishing_campaigns WHERE id = ?", (camp_id,))
+                        if camp and camp.get('ssl_cert_path') and camp.get('ssl_key_path'):
+                            cp, kp = camp['ssl_cert_path'], camp['ssl_key_path']
+                            if Path(cp).exists() and Path(kp).exists():
+                                ssl_context = (cp, kp)
+                                print(f"{Fore.LIGHTGREEN_EX}✓ Certificati trovati nella configurazione della campagna. Il server userà HTTPS.{Style.RESET_ALL}")
+                    if ssl_context is None and dom_id:
+                        dom = db_manager.fetch_one("SELECT ssl_cert_path, ssl_key_path FROM entities WHERE id = ?", (dom_id,))
+                        if dom and dom.get('ssl_cert_path') and dom.get('ssl_key_path'):
+                            cp, kp = dom['ssl_cert_path'], dom['ssl_key_path']
+                            if Path(cp).exists() and Path(kp).exists():
+                                ssl_context = (cp, kp)
+                                print(f"{Fore.LIGHTGREEN_EX}✓ Certificati trovati nella configurazione del dominio. Il server userà HTTPS.{Style.RESET_ALL}")
+
+            # Per la pagina di test, prova le variabili d'ambiente come fallback
+            if ssl_context is None and page_type == 'test':
+                import os
+                env_cert = os.environ.get('BROWPHISH_SSL_CERT')
+                env_key = os.environ.get('BROWPHISH_SSL_KEY')
+                if env_cert and env_key and Path(env_cert).exists() and Path(env_key).exists():
+                    ssl_context = (env_cert, env_key)
+                    print(f"{Fore.LIGHTGREEN_EX}✓ Certificati trovati dalle variabili d'ambiente. Il server userà HTTPS.{Style.RESET_ALL}")
+
+            if ssl_context is None:
+                print(f"{Fore.YELLOW}Nessun certificato valido trovato. Il server userà HTTP.{Style.RESET_ALL}")
+
+        # Avvia il server passando ssl_context (o None)
         start_web_server(page_name=page_name, page_type=page_type, ssl_context=ssl_context)
         print(f"{Fore.LIGHTRED_EX}✓ Server phishing avviato su {page_name} (porta 5000).{Style.RESET_ALL}")
         print(f"{Fore.YELLOW}Assicurati che un firewall non lo blocchi e che la porta sia libera.{Style.RESET_ALL}")

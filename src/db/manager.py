@@ -78,6 +78,26 @@ class DatabaseManager:
                     self.connection.execute(query)
             self.connection.commit()
             logger.info("Schema inizializzato per 'websites'")
+
+            # --- Migrazione: aggiungi colonne SSL se mancanti (per compatibilità retroattiva)
+            try:
+                cursor = self.connection.cursor()
+                # Helper to check and add a column if it doesn't exist
+                def ensure_column(table, column, column_def):
+                    cursor.execute("PRAGMA table_info(%s)" % table)
+                    cols = [row[1] for row in cursor.fetchall()]
+                    if column not in cols:
+                        logger.info(f"Aggiungo colonna '{column}' a '{table}'")
+                        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {column_def}")
+
+                ensure_column('entities', 'ssl_cert_path', 'TEXT')
+                ensure_column('entities', 'ssl_key_path', 'TEXT')
+                ensure_column('phishing_campaigns', 'ssl_cert_path', 'TEXT')
+                ensure_column('phishing_campaigns', 'ssl_key_path', 'TEXT')
+                self.connection.commit()
+            except sqlite3.Error as e:
+                logger.error(f"Errore durante migrazione colonne SSL: {e}")
+
             return True
         except sqlite3.Error as error:
             logger.error(f"Errore inizializzazione schema: {error}")
@@ -182,6 +202,8 @@ class DatabaseManager:
             type TEXT NOT NULL,
             name TEXT NOT NULL,
             domain TEXT,
+            ssl_cert_path TEXT,
+            ssl_key_path TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(type, name, domain)
         );
