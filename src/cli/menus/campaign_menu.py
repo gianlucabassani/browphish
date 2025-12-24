@@ -25,8 +25,8 @@ def display_campaign_menu() -> str:
     print()
     print(f"{Fore.LIGHTRED_EX}7.{Style.RESET_ALL} Visualizza tutte le campagne")
     print(f"{Fore.LIGHTRED_EX}8.{Style.RESET_ALL} Dettagli campagna")
-    print(f"{Fore.LIGHTRED_EX}9.{Style.RESET_ALL} Campagne in esecuzione")    
-    print(f"{Fore.LIGHTRED_EX}10.{Style.RESET_ALL} Configura SSL (cert/key) per campagna/entità")    
+    print(f"{Fore.LIGHTRED_EX}9.{Style.RESET_ALL} Campagne in esecuzione")
+    print(f"{Fore.LIGHTRED_EX}10.{Style.RESET_ALL} Configura SSL (cert/key) per campagna/entità")
     print(f"\n{Fore.LIGHTRED_EX}0.{Style.RESET_ALL} Torna al menu principale")
     return prompt_for_input(f"\n{Fore.LIGHTRED_EX}Scelta: {Style.RESET_ALL}")
 
@@ -437,19 +437,76 @@ def avvia_campagna(db_manager: DatabaseManager) -> None:
     print(f"\n{Fore.LIGHTRED_EX}{'═' * 40}")
     print(f"█ {Fore.WHITE}{'AVVIA CAMPAGNA':^36}{Fore.LIGHTRED_EX} █")
     print(f"{'═' * 40}{Style.RESET_ALL}")
+    
+    campaigns = campaign_manager.get_campaigns(db_manager)
+    if not campaigns:
+        print(f"{Fore.YELLOW}Nessuna campagna trovata.{Style.RESET_ALL}")
+        return
+    
+    # Filtra le campagne non in esecuzione
+    from modules.campaign_managers.campaign_runner import is_campaign_running
+    available = [c for c in campaigns if not is_campaign_running(c['id'])]
+    
+    if not available:
+        print(f"{Fore.YELLOW}Tutte le campagne sono già in esecuzione.{Style.RESET_ALL}")
+        return
+    
+    print(f"\n{Fore.WHITE}Campagne disponibili:{Style.RESET_ALL}")
+    for campaign in available:
+        pages = campaign_manager.get_campaign_pages(campaign['id'], db_manager)
+        pages_info = f"{len(pages) if pages else 0} pagine" if pages else "nessuna pagina"
+        print(f"{Fore.LIGHTRED_EX}[{campaign['id']}]{Style.RESET_ALL} {campaign['name']} ({pages_info})")
+    
+    try:
+        campaign_id = int(prompt_for_input(f"\n{Fore.LIGHTRED_EX}ID della campagna da avviare: {Style.RESET_ALL}"))
+        campaign = campaign_manager.get_campaign_by_id(campaign_id, db_manager)
+        
+        if not campaign:
+            print(f"{Fore.RED}✗ Campagna non trovata.{Style.RESET_ALL}")
+            return
+        
+        pages = campaign_manager.get_campaign_pages(campaign_id, db_manager)
+        if not pages:
+            print(f"{Fore.RED}✗ La campagna non ha pagine associate.{Style.RESET_ALL}")
+            return
+        
+        # Richiedi la porta
+        port_input = prompt_for_input(f"{Fore.WHITE}Porta per il server (default 5000): {Style.RESET_ALL}")
+        port = 5000
+        if port_input.strip():
+            try:
+                port = int(port_input)
+            except ValueError:
+                print(f"{Fore.YELLOW}⚠ Porta non valida. Usando 5000.{Style.RESET_ALL}")
+        
+        from modules.campaign_managers.campaign_runner import start_campaign_background
+        
+        if start_campaign_background(campaign_id, db_manager, port):
+            print(f"\n{Fore.GREEN}✓ Campagna '{campaign['name']}' avviata in background!{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}   Server web sulla porta {port}{Style.RESET_ALL}")
+            print(f"{Fore.YELLOW}   Pagine servite: {', '.join([p['name'] for p in pages])}{Style.RESET_ALL}")
+            print(f"{Fore.WHITE}   Il server continuerà in background mentre navighi il menu.{Style.RESET_ALL}")
+        else:
+            print(f"{Fore.RED}✗ Errore nell'avvio della campagna.{Style.RESET_ALL}")
+    
+    except ValueError:
+        print(f"{Fore.RED}✗ ID non valido.{Style.RESET_ALL}")
+    except Exception as e:
+        print(f"{Fore.RED}✗ Errore: {e}{Style.RESET_ALL}")
+        logger.error(f"Errore avvio campagna: {e}")
 
 
 def configura_ssl_paths(db_manager: DatabaseManager) -> None:
-    """Interfaccia CLI per impostare/cancellare i percorsi SSL per campagne o entità (domini)."""
+    """Interfaccia CLI per impostare/cancellare i percorsi SSL per campagne o entità."""
     from modules.campaign_managers import campaign_manager
 
     print(f"\n{Fore.LIGHTRED_EX}{'═' * 40}")
     print(f"█ {Fore.WHITE}{'CONFIGURA SSL PER CAMPAGNA/ENTITÀ':^36}{Fore.LIGHTRED_EX} █")
     print(f"{'═' * 40}{Style.RESET_ALL}")
 
-    print(f"{Fore.LIGHTRED_EX}1.{Style.RESET_ALL} Imposta/aggiorna percorsi per una campagna")
-    print(f"{Fore.LIGHTRED_EX}2.{Style.RESET_ALL} Imposta/aggiorna percorsi per un'entità (dominio)")
-    print(f"{Fore.LIGHTRED_EX}3.{Style.RESET_ALL} Visualizza percorsi SSL per una campagna")
+    print(f"{Fore.WHITE}1.{Style.RESET_ALL} Imposta/aggiorna percorsi per una campagna")
+    print(f"{Fore.WHITE}2.{Style.RESET_ALL} Imposta/aggiorna percorsi per un'entità (dominio)")
+    print(f"{Fore.WHITE}3.{Style.RESET_ALL} Visualizza percorsi SSL per una campagna")
     print(f"{Fore.RED}0.{Style.RESET_ALL} Annulla")
 
     choice = prompt_for_input(f"\n{Fore.LIGHTRED_EX}Scelta: {Style.RESET_ALL}")
@@ -561,63 +618,6 @@ def configura_ssl_paths(db_manager: DatabaseManager) -> None:
     except Exception as e:
         print(f"{Fore.RED}✗ Errore: {e}{Style.RESET_ALL}")
         logger.error(f"Errore configurazione SSL: {e}")
-    
-    campaigns = campaign_manager.get_campaigns(db_manager)
-    if not campaigns:
-        print(f"{Fore.YELLOW}Nessuna campagna trovata.{Style.RESET_ALL}")
-        return
-    
-    # Filtra le campagne non in esecuzione
-    from modules.campaign_managers.campaign_runner import is_campaign_running
-    available = [c for c in campaigns if not is_campaign_running(c['id'])]
-    
-    if not available:
-        print(f"{Fore.YELLOW}Tutte le campagne sono già in esecuzione.{Style.RESET_ALL}")
-        return
-    
-    print(f"\n{Fore.WHITE}Campagne disponibili:{Style.RESET_ALL}")
-    for campaign in available:
-        pages = campaign_manager.get_campaign_pages(campaign['id'], db_manager)
-        pages_info = f"{len(pages) if pages else 0} pagine" if pages else "nessuna pagina"
-        print(f"{Fore.LIGHTRED_EX}[{campaign['id']}]{Style.RESET_ALL} {campaign['name']} ({pages_info})")
-    
-    try:
-        campaign_id = int(prompt_for_input(f"\n{Fore.LIGHTRED_EX}ID della campagna da avviare: {Style.RESET_ALL}"))
-        campaign = campaign_manager.get_campaign_by_id(campaign_id, db_manager)
-        
-        if not campaign:
-            print(f"{Fore.RED}✗ Campagna non trovata.{Style.RESET_ALL}")
-            return
-        
-        pages = campaign_manager.get_campaign_pages(campaign_id, db_manager)
-        if not pages:
-            print(f"{Fore.RED}✗ La campagna non ha pagine associate.{Style.RESET_ALL}")
-            return
-        
-        # Richiedi la porta
-        port_input = prompt_for_input(f"{Fore.WHITE}Porta per il server (default 5000): {Style.RESET_ALL}")
-        port = 5000
-        if port_input.strip():
-            try:
-                port = int(port_input)
-            except ValueError:
-                print(f"{Fore.YELLOW}⚠ Porta non valida. Usando 5000.{Style.RESET_ALL}")
-        
-        from modules.campaign_managers.campaign_runner import start_campaign_background
-        
-        if start_campaign_background(campaign_id, db_manager, port):
-            print(f"\n{Fore.GREEN}✓ Campagna '{campaign['name']}' avviata in background!{Style.RESET_ALL}")
-            print(f"{Fore.YELLOW}   Server web sulla porta {port}{Style.RESET_ALL}")
-            print(f"{Fore.YELLOW}   Pagine servite: {', '.join([p['name'] for p in pages])}{Style.RESET_ALL}")
-            print(f"{Fore.WHITE}   Il server continuerà in background mentre navighi il menu.{Style.RESET_ALL}")
-        else:
-            print(f"{Fore.RED}✗ Errore nell'avvio della campagna.{Style.RESET_ALL}")
-    
-    except ValueError:
-        print(f"{Fore.RED}✗ ID non valido.{Style.RESET_ALL}")
-    except Exception as e:
-        print(f"{Fore.RED}✗ Errore: {e}{Style.RESET_ALL}")
-        logger.error(f"Errore avvio campagna: {e}")
 
 def arresta_campagna(db_manager: DatabaseManager) -> None:
     """Arresta una campagna in esecuzione."""

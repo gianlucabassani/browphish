@@ -78,26 +78,34 @@ def start_server_with_page(page_name: str, page_type: str, cert_path: str | None
             db_manager = DatabaseManager.get_instance()
 
             if page_type == 'captured':
-                page_row = db_manager.fetch_one("SELECT campaign_entity_id, domain_entity_id FROM phishing_pages WHERE name = ?", (page_name,))
-                if page_row:
-                    # Priorità: certificati della campagna > certificati del dominio (entity)
-                    camp_id = page_row.get('campaign_entity_id')
-                    dom_id = page_row.get('domain_entity_id')
+                # Centralizza la logica di lookup in campaign_manager
+                try:
+                    from modules.campaign_managers import campaign_manager as cm
+                    certs = cm.get_ssl_paths_for_page(page_name, db_manager)
+                    if certs and certs != (None, None):
+                        ssl_context = certs
+                        print(f"{Fore.LIGHTGREEN_EX}✓ Certificati trovati nella configurazione (campagna/dom). Il server userà HTTPS.{Style.RESET_ALL}")
+                except Exception:
+                    # Se qualcosa va storto, fallback alla logica precedente (silenziosamente)
+                    page_row = db_manager.fetch_one("SELECT campaign_entity_id, domain_entity_id FROM phishing_pages WHERE name = ?", (page_name,))
+                    if page_row:
+                        camp_id = page_row.get('campaign_entity_id')
+                        dom_id = page_row.get('domain_entity_id')
 
-                    if camp_id:
-                        camp = db_manager.fetch_one("SELECT ssl_cert_path, ssl_key_path FROM phishing_campaigns WHERE id = ?", (camp_id,))
-                        if camp and camp.get('ssl_cert_path') and camp.get('ssl_key_path'):
-                            cp, kp = camp['ssl_cert_path'], camp['ssl_key_path']
-                            if Path(cp).exists() and Path(kp).exists():
-                                ssl_context = (cp, kp)
-                                print(f"{Fore.LIGHTGREEN_EX}✓ Certificati trovati nella configurazione della campagna. Il server userà HTTPS.{Style.RESET_ALL}")
-                    if ssl_context is None and dom_id:
-                        dom = db_manager.fetch_one("SELECT ssl_cert_path, ssl_key_path FROM entities WHERE id = ?", (dom_id,))
-                        if dom and dom.get('ssl_cert_path') and dom.get('ssl_key_path'):
-                            cp, kp = dom['ssl_cert_path'], dom['ssl_key_path']
-                            if Path(cp).exists() and Path(kp).exists():
-                                ssl_context = (cp, kp)
-                                print(f"{Fore.LIGHTGREEN_EX}✓ Certificati trovati nella configurazione del dominio. Il server userà HTTPS.{Style.RESET_ALL}")
+                        if camp_id:
+                            camp = db_manager.fetch_one("SELECT ssl_cert_path, ssl_key_path FROM phishing_campaigns WHERE id = ?", (camp_id,))
+                            if camp and camp.get('ssl_cert_path') and camp.get('ssl_key_path'):
+                                cp, kp = camp['ssl_cert_path'], camp['ssl_key_path']
+                                if Path(cp).exists() and Path(kp).exists():
+                                    ssl_context = (cp, kp)
+                                    print(f"{Fore.LIGHTGREEN_EX}✓ Certificati trovati nella configurazione della campagna. Il server userà HTTPS.{Style.RESET_ALL}")
+                        if ssl_context is None and dom_id:
+                            dom = db_manager.fetch_one("SELECT ssl_cert_path, ssl_key_path FROM entities WHERE id = ?", (dom_id,))
+                            if dom and dom.get('ssl_cert_path') and dom.get('ssl_key_path'):
+                                cp, kp = dom['ssl_cert_path'], dom['ssl_key_path']
+                                if Path(cp).exists() and Path(kp).exists():
+                                    ssl_context = (cp, kp)
+                                    print(f"{Fore.LIGHTGREEN_EX}✓ Certificati trovati nella configurazione del dominio. Il server userà HTTPS.{Style.RESET_ALL}")
 
             # Per la pagina di test, prova le variabili d'ambiente come fallback
             if ssl_context is None and page_type == 'test':

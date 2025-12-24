@@ -192,4 +192,3 @@ def get_ssl_paths_for_page(page_name, db_manager):
                 return (row['ssl_cert_path'], row['ssl_key_path'])
 
     return (None, None)
-
